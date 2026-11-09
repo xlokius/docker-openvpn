@@ -20,7 +20,7 @@ WORKDIR /usr/src
 RUN curl --fail --location --silent --show-error \
         --output openvpn.tar.gz \
         "https://build.openvpn.net/downloads/releases/openvpn-${OPENVPN_VERSION}.tar.gz" \
-    && echo "${OPENVPN_SHA256}  openvpn.tar.gz" | sha256sum --check \
+    && echo "${OPENVPN_SHA256}  openvpn.tar.gz" | sha256sum -c \
     && tar --extract --file openvpn.tar.gz \
     && rm openvpn.tar.gz
 
