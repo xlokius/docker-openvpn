@@ -95,14 +95,14 @@ usage() {
     echo " -a    Authenticate  packets with HMAC using the given message digest algorithm (auth)."
     echo " -b    Disable 'push block-outside-dns'"
     echo " -c    Enable client-to-client option"
-    echo " -C    A list of allowable TLS ciphers delimited by a colon (cipher)."
+    echo " -C    A colon-delimited list of data ciphers (data-ciphers)."
     echo " -d    Disable default route"
     echo " -D    Do not push dns servers"
     echo " -k    Set keepalive. Default: '10 60'"
     echo " -m    Set client MTU"
     echo " -N    Configure NAT to access external server network"
     echo " -t    Use TAP device (instead of TUN device)"
-    echo " -T    Encrypt packets with the given cipher algorithm instead of the default one (tls-cipher)."
+    echo " -T    Restrict TLS cipher suites (tls-cipher)."
     echo " -z    Enable comp-lzo compression."
 }
 
@@ -144,6 +144,8 @@ fi
 
 OVPN_AUTH=''
 OVPN_CIPHER=''
+OVPN_DATA_CIPHERS='AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305'
+OVPN_DATA_CIPHERS_CUSTOM=0
 OVPN_CLIENT_TO_CLIENT=''
 OVPN_CN=''
 OVPN_COMP_LZO=0
@@ -171,6 +173,16 @@ OVPN_TLS_CIPHER=''
 # Import existing configuration if present
 [ -r "$OVPN_ENV" ] && source "$OVPN_ENV"
 
+# Configurations created before this fork used OVPN_CIPHER/cipher. Preserve an
+# explicitly selected legacy cipher on their first regeneration, while new
+# configurations use OpenVPN's data-cipher negotiation by default.
+if [ -r "$OVPN_ENV" ] \
+    && ! grep -q '^declare -x OVPN_DATA_CIPHERS=' "$OVPN_ENV" \
+    && [ -n "$OVPN_CIPHER" ]; then
+    OVPN_DATA_CIPHERS="$OVPN_CIPHER"
+    OVPN_DATA_CIPHERS_CUSTOM=1
+fi
+
 # Parse arguments
 while getopts ":a:e:E:C:T:r:s:du:bcp:n:k:DNm:f:tz2" opt; do
     case $opt in
@@ -190,7 +202,8 @@ while getopts ":a:e:E:C:T:r:s:du:bcp:n:k:DNm:f:tz2" opt; do
             done
             ;;
         C)
-            OVPN_CIPHER="$OPTARG"
+            OVPN_DATA_CIPHERS="$OPTARG"
+            OVPN_DATA_CIPHERS_CUSTOM=1
             ;;
         T)
             OVPN_TLS_CIPHER="$OPTARG"
@@ -347,7 +360,7 @@ else
 fi
 
 [ -n "$OVPN_TLS_CIPHER" ] && echo "tls-cipher $OVPN_TLS_CIPHER" >> "$conf"
-[ -n "$OVPN_CIPHER" ] && echo "cipher $OVPN_CIPHER" >> "$conf"
+[ -n "$OVPN_DATA_CIPHERS" ] && echo "data-ciphers $OVPN_DATA_CIPHERS" >> "$conf"
 [ -n "$OVPN_AUTH" ] && echo "auth $OVPN_AUTH" >> "$conf"
 
 [ -n "${OVPN_CLIENT_TO_CLIENT:-}" ] && echo "client-to-client" >> "$conf"

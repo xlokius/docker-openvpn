@@ -84,8 +84,11 @@ tls-auth ta.key 1
         echo "tls-cipher $OVPN_TLS_CIPHER"
     fi
 
-    if [ -n "$OVPN_CIPHER" ]; then
-        echo "cipher $OVPN_CIPHER"
+    # Keep the default profile compatible with OpenVPN 2.4 clients, which do
+    # not understand the data-ciphers directive. Modern clients negotiate the
+    # server's configured list automatically.
+    if [ "${OVPN_DATA_CIPHERS_CUSTOM:-0}" == "1" ]; then
+        echo "data-ciphers $OVPN_DATA_CIPHERS"
     fi
 
     if [ -n "$OVPN_AUTH" ]; then

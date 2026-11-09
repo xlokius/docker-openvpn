@@ -1,31 +1,70 @@
-# Original credit: https://github.com/jpetazzo/dockvpn
+# Build OpenVPN from the verified upstream community release.
+FROM alpine:3.23 AS openvpn-build
 
-# Smallest base image
-FROM alpine:latest
+ARG OPENVPN_VERSION=2.7.9
+ARG OPENVPN_SHA256=c42a6ed892ddfe2d6e3317a5040f19bec5827564affb2fe3f2b3904a94daacb1
 
-LABEL maintainer="Kyle Manna <kyle@kylemanna.com>"
+RUN apk add --no-cache \
+        build-base \
+        curl \
+        libcap-ng-dev \
+        libnl3-dev \
+        linux-headers \
+        linux-pam-dev \
+        lz4-dev \
+        lzo-dev \
+        openssl-dev \
+        pkgconf
 
-# Testing: pamtester
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing/" >> /etc/apk/repositories && \
-    apk add --update openvpn iptables bash easy-rsa openvpn-auth-pam google-authenticator pamtester libqrencode && \
-    ln -s /usr/share/easy-rsa/easyrsa /usr/local/bin && \
-    rm -rf /tmp/* /var/tmp/* /var/cache/apk/* /var/cache/distfiles/*
+WORKDIR /usr/src
+RUN curl --fail --location --silent --show-error \
+        --output openvpn.tar.gz \
+        "https://build.openvpn.net/downloads/releases/openvpn-${OPENVPN_VERSION}.tar.gz" \
+    && echo "${OPENVPN_SHA256}  openvpn.tar.gz" | sha256sum --check \
+    && tar --extract --file openvpn.tar.gz \
+    && rm openvpn.tar.gz
 
-# Needed by scripts
-ENV OPENVPN=/etc/openvpn
-ENV EASYRSA=/usr/share/easy-rsa \
+WORKDIR /usr/src/openvpn-${OPENVPN_VERSION}
+RUN ./configure --prefix=/usr --sysconfdir=/etc/openvpn --disable-dns-updown-by-default \
+    && make -j2 \
+    && make DESTDIR=/openvpn-root install
+
+# Alpine's package is deliberately not used for OpenVPN itself: this image
+# contains the exact, checksum-verified upstream version declared above.
+FROM alpine:3.23
+
+ARG OPENVPN_VERSION=2.7.9
+LABEL org.opencontainers.image.title="docker-openvpn" \
+      org.opencontainers.image.version="${OPENVPN_VERSION}" \
+      org.opencontainers.image.source="https://github.com/xlokius/docker-openvpn"
+
+RUN apk add --no-cache \
+        bash \
+        ca-certificates \
+        easy-rsa \
+        google-authenticator \
+        iproute2 \
+        iptables \
+        libcap-ng \
+        libnl3 \
+        libqrencode \
+        linux-pam \
+        lz4-libs \
+        lzo \
+        openssl \
+    && ln -s /usr/share/easy-rsa/easyrsa /usr/local/bin/easyrsa
+
+COPY --from=openvpn-build /openvpn-root/usr/ /usr/
+COPY bin/ /usr/local/bin/
+COPY otp/openvpn /etc/pam.d/openvpn
+RUN chmod a+x /usr/local/bin/*
+
+ENV OPENVPN=/etc/openvpn \
+    EASYRSA=/usr/share/easy-rsa \
     EASYRSA_CRL_DAYS=3650 \
-    EASYRSA_PKI=$OPENVPN/pki
+    EASYRSA_PKI=/etc/openvpn/pki
 
 VOLUME ["/etc/openvpn"]
-
-# Internally uses port 1194/udp, remap using `docker run -p 443:1194/tcp`
 EXPOSE 1194/udp
 
 CMD ["ovpn_run"]
-
-ADD ./bin /usr/local/bin
-RUN chmod a+x /usr/local/bin/*
-
-# Add support for OTP authentication using a PAM module
-ADD ./otp/openvpn /etc/pam.d/

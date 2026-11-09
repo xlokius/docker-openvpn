@@ -9,6 +9,26 @@
 
 OpenVPN server in a Docker container complete with an EasyRSA PKI CA.
 
+## Maintained fork image
+
+This fork builds OpenVPN from the checksum-verified upstream community release,
+rather than relying on the version available in the Alpine package repository.
+It currently builds OpenVPN **2.7.9**. Build and verify the local image before
+using it on the VPS:
+
+    docker build --pull --tag xlokius/openvpn:2.7.9 .
+    docker run --rm xlokius/openvpn:2.7.9 openvpn --version
+
+Use `xlokius/openvpn:2.7.9` in place of `kylemanna/openvpn` in the commands
+below. Existing `/etc/openvpn` volumes are not modified by the image build;
+back them up before regenerating configuration with this newer major release.
+
+The `-C` option of `ovpn_genconfig` now writes OpenVPN's modern
+`data-ciphers` setting. Its secure default is
+`AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305`. Default client profiles leave
+cipher negotiation automatic so they remain compatible with OpenVPN 2.4
+clients.
+
 Extensively tested on [Digital Ocean $5/mo node](http://bit.ly/1C7cKr3) and has
 a corresponding [Digital Ocean Community Tutorial](http://bit.ly/1AGUZkq).
 
