@@ -1,41 +1,52 @@
 # OpenVPN for Docker
 
-[![Build Status](https://travis-ci.org/kylemanna/docker-openvpn.svg)](https://travis-ci.org/kylemanna/docker-openvpn)
-[![Docker Stars](https://img.shields.io/docker/stars/kylemanna/openvpn.svg)](https://hub.docker.com/r/kylemanna/openvpn/)
-[![Docker Pulls](https://img.shields.io/docker/pulls/kylemanna/openvpn.svg)](https://hub.docker.com/r/kylemanna/openvpn/)
-[![ImageLayers](https://images.microbadger.com/badges/image/kylemanna/openvpn.svg)](https://microbadger.com/#/images/kylemanna/openvpn)
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fkylemanna%2Fdocker-openvpn.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fkylemanna%2Fdocker-openvpn?ref=badge_shield)
-
-
-OpenVPN server in a Docker container complete with an EasyRSA PKI CA.
+OpenVPN server in a Docker container complete with an EasyRSA PKI CA. This is a maintained fork of [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn).
 
 ## Maintained fork image
 
-This fork builds OpenVPN from the checksum-verified upstream community release,
-rather than relying on the version available in the Alpine package repository.
-It currently builds OpenVPN **2.7.9**. Build and verify the local image before
-using it on the VPS:
+This fork builds OpenVPN **2.7.9** from the upstream community source archive
+and verifies its SHA-256 checksum during the Docker build. The runtime is based
+on Alpine Linux 3.23; Easy-RSA and supporting libraries are installed from the
+Alpine package repositories. OpenVPN is not taken from Alpine's OpenVPN package.
+
+Build and inspect the image before deployment:
 
     docker build --pull --tag xlokius/openvpn:2.7.9 .
     docker run --rm xlokius/openvpn:2.7.9 openvpn --version
 
 Use `xlokius/openvpn:2.7.9` in place of `kylemanna/openvpn` in the commands
-below. Existing `/etc/openvpn` volumes are not modified by the image build;
-back them up before regenerating configuration with this newer major release.
+below. The Dockerfile currently uses mutable base-image and Alpine package
+references, so rebuilds may include newer Alpine packages. Back up the
+`/etc/openvpn` data volume before upgrading or regenerating configuration.
 
 The `-C` option of `ovpn_genconfig` now writes OpenVPN's modern
-`data-ciphers` setting. Its secure default is
-`AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305`. Default client profiles leave
-cipher negotiation automatic so they remain compatible with OpenVPN 2.4
-clients.
+`data-ciphers` setting. Its default is
+`AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305`. Generated client profiles leave
+cipher negotiation automatic unless a custom cipher list was explicitly
+selected. Legacy configurations with an explicit `OVPN_CIPHER` retain that
+setting when first regenerated.
+
+This fork retains the upstream command-line workflow and stored volume layout.
+The image build does not migrate or rewrite existing volumes. Review generated
+configuration and test client compatibility before upgrading a deployed
+server. `comp-lzo` remains available as a compatibility option; compression
+should remain disabled unless a specific legacy client requires it.
+
+Current scope: OpenVPN 2.7.9 source build, existing Easy-RSA based PKI and
+client-management scripts, existing IPv4/IPv6/OTP/TCP functionality and the
+repository's shell/Docker test suite. OpenVPN 2.7.9 is the version currently
+declared by the Dockerfiles, not an automatic “latest” channel. The base image
+and Alpine package versions are not pinned by digest/version, and the README's
+legacy Travis badge has been removed pending an active CI status badge.
 
 Extensively tested on [Digital Ocean $5/mo node](http://bit.ly/1C7cKr3) and has
 a corresponding [Digital Ocean Community Tutorial](http://bit.ly/1AGUZkq).
 
 #### Upstream Links
 
-* Docker Registry @ [kylemanna/openvpn](https://hub.docker.com/r/kylemanna/openvpn/)
-* GitHub @ [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn)
+* Docker image: `xlokius/openvpn:2.7.9` (build locally using the command above)
+* This fork: [xlokius/docker-openvpn](https://github.com/xlokius/docker-openvpn)
+* Original project: [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn)
 
 ## Quick Start
 
@@ -51,20 +62,20 @@ a corresponding [Digital Ocean Community Tutorial](http://bit.ly/1AGUZkq).
   private key used by the newly generated certificate authority.
 
       docker volume create --name $OVPN_DATA
-      docker run -v $OVPN_DATA:/etc/openvpn --rm kylemanna/openvpn ovpn_genconfig -u udp://VPN.SERVERNAME.COM
-      docker run -v $OVPN_DATA:/etc/openvpn --rm -it kylemanna/openvpn ovpn_initpki
+      docker run -v $OVPN_DATA:/etc/openvpn --rm xlokius/openvpn:2.7.9 ovpn_genconfig -u udp://VPN.SERVERNAME.COM
+      docker run -v $OVPN_DATA:/etc/openvpn --rm -it xlokius/openvpn:2.7.9 ovpn_initpki
 
 * Start OpenVPN server process
 
-      docker run -v $OVPN_DATA:/etc/openvpn -d -p 1194:1194/udp --cap-add=NET_ADMIN kylemanna/openvpn
+      docker run -v $OVPN_DATA:/etc/openvpn -d -p 1194:1194/udp --cap-add=NET_ADMIN xlokius/openvpn:2.7.9
 
 * Generate a client certificate without a passphrase
 
-      docker run -v $OVPN_DATA:/etc/openvpn --rm -it kylemanna/openvpn easyrsa build-client-full CLIENTNAME nopass
+      docker run -v $OVPN_DATA:/etc/openvpn --rm -it xlokius/openvpn:2.7.9 easyrsa build-client-full CLIENTNAME nopass
 
 * Retrieve the client configuration with embedded certificates
 
-      docker run -v $OVPN_DATA:/etc/openvpn --rm kylemanna/openvpn ovpn_getclient CLIENTNAME > CLIENTNAME.ovpn
+      docker run -v $OVPN_DATA:/etc/openvpn --rm xlokius/openvpn:2.7.9 ovpn_getclient CLIENTNAME > CLIENTNAME.ovpn
 
 ## Next Steps
 
@@ -75,9 +86,10 @@ Miscellaneous write-ups for advanced configurations are available in the
 
 ### Systemd Init Scripts
 
-A `systemd` init script is available to manage the OpenVPN container.  It will
-start the container on system boot, restart the container if it exits
-unexpectedly, and pull updates from Docker Hub to keep itself up to date.
+A `systemd` init script is available to manage the OpenVPN container. It can
+start the container on boot and restart it if it exits unexpectedly. Review its
+image reference before use so it points to the image built from this fork;
+updates should be pulled or built deliberately after reviewing the release.
 
 Please refer to the [systemd documentation](docs/systemd.md) to learn more.
 
@@ -89,7 +101,7 @@ If you prefer to use `docker-compose` please refer to the [documentation](docs/d
 
 * Create an environment variable with the name DEBUG and value of 1 to enable debug output (using "docker -e").
 
-        docker run -v $OVPN_DATA:/etc/openvpn -p 1194:1194/udp --cap-add=NET_ADMIN -e DEBUG=1 kylemanna/openvpn
+        docker run -v $OVPN_DATA:/etc/openvpn -p 1194:1194/udp --cap-add=NET_ADMIN -e DEBUG=1 xlokius/openvpn:2.7.9
 
 * Test using a client that has openvpn installed correctly
 
@@ -107,7 +119,7 @@ If you prefer to use `docker-compose` please refer to the [documentation](docs/d
 
 ## How Does It Work?
 
-Initialize the volume container using the `kylemanna/openvpn` image with the
+Initialize the volume using the `xlokius/openvpn` image with the
 included scripts to automatically generate:
 
 - Diffie-Hellman parameters
@@ -123,11 +135,11 @@ declares that directory as a volume. It means that you can start another
 container with the `-v` argument, and access the configuration.
 The volume also holds the PKI keys and certs so that it could be backed up.
 
-To generate a client certificate, `kylemanna/openvpn` uses EasyRSA via the
+To generate a client certificate, the image uses EasyRSA via the
 `easyrsa` command in the container's path.  The `EASYRSA_*` environmental
 variables place the PKI CA under `/etc/openvpn/pki`.
 
-Conveniently, `kylemanna/openvpn` comes with a script called `ovpn_getclient`,
+The image includes a script called `ovpn_getclient`,
 which dumps an inline OpenVPN client configuration file.  This single file can
 then be given to a client for access to the VPN.
 
@@ -192,8 +204,8 @@ OpenVPN with latest OpenSSL on Ubuntu 12.04 LTS).
 
 ### It Doesn't Stomp All Over the Server's Filesystem
 
-Everything for the Docker container is contained in two images: the ephemeral
-run time image (kylemanna/openvpn) and the `$OVPN_DATA` data volume. To remove
+Everything for the Docker container is contained in the runtime image
+(`xlokius/openvpn`) and the `$OVPN_DATA` data volume. To remove
 it, remove the corresponding containers, `$OVPN_DATA` data volume and Docker
 image and it's completely removed.  This also makes it easier to run multiple
 servers since each lives in the bubble of the container (of course multiple IPs
