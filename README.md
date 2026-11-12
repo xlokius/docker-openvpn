@@ -57,6 +57,7 @@ Si la imagen es privada, inicia sesión en Docker Hub en el servidor antes de
 descargarla. Actualizar la imagen no reinicia el contenedor automáticamente;
 recréalo cuando corresponda conservando su volumen y configuración de red.
 
+
 ## Clientes
 
 Crear un certificado y exportar un perfil `.ovpn` autocontenido:
