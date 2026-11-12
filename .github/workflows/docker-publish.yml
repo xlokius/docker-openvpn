@@ -26,7 +26,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ vars.DOCKERHUB_USERNAME || github.repository_owner }}/openvpn
+          images: ${{ vars.DOCKERHUB_USERNAME || github.repository_owner }}/docker-openvpn
           flavor: latest=false
           tags: |
             type=sha,format=long

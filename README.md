@@ -18,7 +18,7 @@ Reemplaza `VPN.SERVERNAME.COM` por el nombre DNS público del servidor.
 
 ```sh
 OVPN_DATA="ovpn-data-example"
-IMAGE="xlokius/openvpn:2.7.9"
+IMAGE="xlokius/docker-openvpn:2.7.9"
 
 docker build --pull -t "$IMAGE" .
 docker run --rm "$IMAGE" openvpn --version
@@ -43,14 +43,14 @@ Para habilitar la publicación, en GitHub ve a **Settings → Secrets and variab
 → Actions** y configura:
 
 - Variable `DOCKERHUB_USERNAME`: nombre de usuario de Docker Hub, propietario
-  del repositorio de imagen `openvpn`.
+  del repositorio de imagen `docker-openvpn`.
 - Secret `DOCKERHUB_TOKEN`: token de acceso de Docker Hub con permiso de escritura.
 
 Activa GitHub Actions en la pestaña **Actions** del fork si aún no está habilitado.
 Tras publicar, sustituye `USUARIO` por el usuario de Docker Hub para descargar:
 
 ```sh
-docker pull USUARIO/openvpn:latest
+docker pull USUARIO/docker-openvpn:latest
 ```
 
 Si la imagen es privada, inicia sesión en Docker Hub en el servidor antes de
