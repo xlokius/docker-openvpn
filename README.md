@@ -31,6 +31,32 @@ docker run -v "$OVPN_DATA:/etc/openvpn" -d -p 1194:1194/udp \
   --cap-add=NET_ADMIN "$IMAGE"
 ```
 
+## Publicación en Docker Hub
+
+El workflow `.github/workflows/docker-publish.yml` construye la imagen para
+`linux/amd64` en cada push. Publica una etiqueta `sha-<commit>` y, para la rama
+`master`, actualiza también `latest`. Las etiquetas de Git con formato de versión,
+por ejemplo `v1.0.0`, generan la etiqueta de imagen `1.0.0`. Los pull requests
+construyen la imagen sin publicarla.
+
+Para habilitar la publicación, en GitHub ve a **Settings → Secrets and variables
+→ Actions** y configura:
+
+- Variable `DOCKERHUB_USERNAME`: nombre de usuario de Docker Hub, propietario
+  del repositorio de imagen `openvpn`.
+- Secret `DOCKERHUB_TOKEN`: token de acceso de Docker Hub con permiso de escritura.
+
+Activa GitHub Actions en la pestaña **Actions** del fork si aún no está habilitado.
+Tras publicar, sustituye `USUARIO` por el usuario de Docker Hub para descargar:
+
+```sh
+docker pull USUARIO/openvpn:latest
+```
+
+Si la imagen es privada, inicia sesión en Docker Hub en el servidor antes de
+descargarla. Actualizar la imagen no reinicia el contenedor automáticamente;
+recréalo cuando corresponda conservando su volumen y configuración de red.
+
 ## Clientes
 
 Crear un certificado y exportar un perfil `.ovpn` autocontenido:
