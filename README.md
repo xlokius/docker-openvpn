@@ -1,242 +1,68 @@
-# OpenVPN for Docker
+# OpenVPN para Docker
 
-OpenVPN server in a Docker container complete with an EasyRSA PKI CA. This is a maintained fork of [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn).
+Fork mantenido de [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn), con OpenVPN **2.7.9** compilado desde el archivo fuente oficial y verificado mediante SHA-256. La imagen se basa en Alpine Linux 3.23; Easy-RSA y las dependencias se instalan desde sus repositorios.
 
-## Maintained fork image
+Repositorio: [xlokius/docker-openvpn](https://github.com/xlokius/docker-openvpn)
 
-This fork builds OpenVPN **2.7.9** from the upstream community source archive
-and verifies its SHA-256 checksum during the Docker build. The runtime is based
-on Alpine Linux 3.23; Easy-RSA and supporting libraries are installed from the
-Alpine package repositories. OpenVPN is not taken from Alpine's OpenVPN package.
+## Estado
 
-Build and inspect the image before deployment:
+- Conserva el flujo de comandos, el formato del volumen `/etc/openvpn` y las funciones existentes de PKI, clientes, OTP, IPv4/IPv6 y TCP.
+- `ovpn_genconfig -C` configura `data-ciphers`; el valor predeterminado es `AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305`.
+- Los volúmenes existentes no se migran automáticamente. Haz una copia de seguridad y prueba la actualización con clientes antes de aplicarla al servidor.
+- La versión OpenVPN se fija en 2.7.9 y se comprueba su SHA-256 durante la compilación. La imagen base y los paquetes Alpine no están fijados por digest o versión; reconstrucciones posteriores pueden incluir cambios.
+- `comp-lzo` sigue disponible para compatibilidad. Mantén la compresión desactivada salvo que un cliente antiguo la necesite.
 
-    docker build --pull --tag xlokius/openvpn:2.7.9 .
-    docker run --rm xlokius/openvpn:2.7.9 openvpn --version
+## Inicio rápido
 
-Use `xlokius/openvpn:2.7.9` in place of `kylemanna/openvpn` in the commands
-below. The Dockerfile currently uses mutable base-image and Alpine package
-references, so rebuilds may include newer Alpine packages. Back up the
-`/etc/openvpn` data volume before upgrading or regenerating configuration.
+Reemplaza `VPN.SERVERNAME.COM` por el nombre DNS público del servidor.
 
-The `-C` option of `ovpn_genconfig` now writes OpenVPN's modern
-`data-ciphers` setting. Its default is
-`AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305`. Generated client profiles leave
-cipher negotiation automatic unless a custom cipher list was explicitly
-selected. Legacy configurations with an explicit `OVPN_CIPHER` retain that
-setting when first regenerated.
+```sh
+OVPN_DATA="ovpn-data-example"
+IMAGE="xlokius/openvpn:2.7.9"
 
-This fork retains the upstream command-line workflow and stored volume layout.
-The image build does not migrate or rewrite existing volumes. Review generated
-configuration and test client compatibility before upgrading a deployed
-server. `comp-lzo` remains available as a compatibility option; compression
-should remain disabled unless a specific legacy client requires it.
+docker build --pull -t "$IMAGE" .
+docker run --rm "$IMAGE" openvpn --version
 
-Current scope: OpenVPN 2.7.9 source build, existing Easy-RSA based PKI and
-client-management scripts, existing IPv4/IPv6/OTP/TCP functionality and the
-repository's shell/Docker test suite. OpenVPN 2.7.9 is the version currently
-declared by the Dockerfiles, not an automatic “latest” channel. The base image
-and Alpine package versions are not pinned by digest/version, and the README's
-legacy Travis badge has been removed pending an active CI status badge.
+docker volume create --name "$OVPN_DATA"
+docker run -v "$OVPN_DATA:/etc/openvpn" --rm "$IMAGE" \
+  ovpn_genconfig -u udp://VPN.SERVERNAME.COM
+docker run -v "$OVPN_DATA:/etc/openvpn" --rm -it "$IMAGE" ovpn_initpki
+docker run -v "$OVPN_DATA:/etc/openvpn" -d -p 1194:1194/udp \
+  --cap-add=NET_ADMIN "$IMAGE"
+```
 
-Extensively tested on [Digital Ocean $5/mo node](http://bit.ly/1C7cKr3) and has
-a corresponding [Digital Ocean Community Tutorial](http://bit.ly/1AGUZkq).
+## Clientes
 
-#### Upstream Links
+Crear un certificado y exportar un perfil `.ovpn` autocontenido:
 
-* Docker image: `xlokius/openvpn:2.7.9` (build locally using the command above)
-* This fork: [xlokius/docker-openvpn](https://github.com/xlokius/docker-openvpn)
-* Original project: [kylemanna/docker-openvpn](https://github.com/kylemanna/docker-openvpn)
+```sh
+docker run -v "$OVPN_DATA:/etc/openvpn" --rm -it "$IMAGE" \
+  easyrsa build-client-full CLIENTNAME nopass
+docker run -v "$OVPN_DATA:/etc/openvpn" --rm "$IMAGE" \
+  ovpn_getclient CLIENTNAME > CLIENTNAME.ovpn
+```
 
-## Quick Start
+El archivo exportado incluye la clave privada del cliente. Guárdalo y compártelo como una credencial secreta. Para revocar un cliente:
 
-* Pick a name for the `$OVPN_DATA` data volume container. It's recommended to
-  use the `ovpn-data-` prefix to operate seamlessly with the reference systemd
-  service.  Users are encourage to replace `example` with a descriptive name of
-  their choosing.
+```sh
+docker run -v "$OVPN_DATA:/etc/openvpn" --rm -it "$IMAGE" \
+  ovpn_revokeclient CLIENTNAME
+```
 
-      OVPN_DATA="ovpn-data-example"
+Consulta [`docs/clients.md`](docs/clients.md) y [`docs/otp.md`](docs/otp.md) para más opciones.
 
-* Initialize the `$OVPN_DATA` container that will hold the configuration files
-  and certificates.  The container will prompt for a passphrase to protect the
-  private key used by the newly generated certificate authority.
+## Seguridad y actualización
 
-      docker volume create --name $OVPN_DATA
-      docker run -v $OVPN_DATA:/etc/openvpn --rm xlokius/openvpn:2.7.9 ovpn_genconfig -u udp://VPN.SERVERNAME.COM
-      docker run -v $OVPN_DATA:/etc/openvpn --rm -it xlokius/openvpn:2.7.9 ovpn_initpki
+- El volumen contiene la CA y las claves PKI. Restringe el acceso y mantén copias de seguridad protegidas. Para separar la CA del servidor, sigue [`docs/paranoid.md`](docs/paranoid.md).
+- La inicialización de PKI solicita una contraseña para proteger la clave de la CA. Evita `nopass` para la CA.
+- El contenedor requiere `NET_ADMIN` para configurar la red. No uses `--privileged` salvo que hayas confirmado que tu entorno lo exige.
+- Antes de actualizar, respalda el volumen, revisa la configuración generada y confirma que los clientes sean compatibles con OpenVPN 2.7.
+- La imagen no configura el firewall ni el forwarding del host. Consulta [`docs/debug.md`](docs/debug.md) si el cliente conecta pero no alcanza las redes esperadas.
 
-* Start OpenVPN server process
+## Pruebas
 
-      docker run -v $OVPN_DATA:/etc/openvpn -d -p 1194:1194/udp --cap-add=NET_ADMIN xlokius/openvpn:2.7.9
+Las pruebas del repositorio están documentadas en [`test/README.md`](test/README.md). Ejecuta la suite antes de publicar una imagen o actualizar un servidor.
 
-* Generate a client certificate without a passphrase
+## Licencia
 
-      docker run -v $OVPN_DATA:/etc/openvpn --rm -it xlokius/openvpn:2.7.9 easyrsa build-client-full CLIENTNAME nopass
-
-* Retrieve the client configuration with embedded certificates
-
-      docker run -v $OVPN_DATA:/etc/openvpn --rm xlokius/openvpn:2.7.9 ovpn_getclient CLIENTNAME > CLIENTNAME.ovpn
-
-## Next Steps
-
-### More Reading
-
-Miscellaneous write-ups for advanced configurations are available in the
-[docs](docs) folder.
-
-### Systemd Init Scripts
-
-A `systemd` init script is available to manage the OpenVPN container. It can
-start the container on boot and restart it if it exits unexpectedly. Review its
-image reference before use so it points to the image built from this fork;
-updates should be pulled or built deliberately after reviewing the release.
-
-Please refer to the [systemd documentation](docs/systemd.md) to learn more.
-
-### Docker Compose
-
-If you prefer to use `docker-compose` please refer to the [documentation](docs/docker-compose.md).
-
-## Debugging Tips
-
-* Create an environment variable with the name DEBUG and value of 1 to enable debug output (using "docker -e").
-
-        docker run -v $OVPN_DATA:/etc/openvpn -p 1194:1194/udp --cap-add=NET_ADMIN -e DEBUG=1 xlokius/openvpn:2.7.9
-
-* Test using a client that has openvpn installed correctly
-
-        $ openvpn --config CLIENTNAME.ovpn
-
-* Run through a barrage of debugging checks on the client if things don't just work
-
-        $ ping 8.8.8.8    # checks connectivity without touching name resolution
-        $ dig google.com  # won't use the search directives in resolv.conf
-        $ nslookup google.com # will use search
-
-* Consider setting up a [systemd service](/docs/systemd.md) for automatic
-  start-up at boot time and restart in the event the OpenVPN daemon or Docker
-  crashes.
-
-## How Does It Work?
-
-Initialize the volume using the `xlokius/openvpn` image with the
-included scripts to automatically generate:
-
-- Diffie-Hellman parameters
-- a private key
-- a self-certificate matching the private key for the OpenVPN server
-- an EasyRSA CA key and certificate
-- a TLS auth key from HMAC security
-
-The OpenVPN server is started with the default run cmd of `ovpn_run`
-
-The configuration is located in `/etc/openvpn`, and the Dockerfile
-declares that directory as a volume. It means that you can start another
-container with the `-v` argument, and access the configuration.
-The volume also holds the PKI keys and certs so that it could be backed up.
-
-To generate a client certificate, the image uses EasyRSA via the
-`easyrsa` command in the container's path.  The `EASYRSA_*` environmental
-variables place the PKI CA under `/etc/openvpn/pki`.
-
-The image includes a script called `ovpn_getclient`,
-which dumps an inline OpenVPN client configuration file.  This single file can
-then be given to a client for access to the VPN.
-
-To enable Two Factor Authentication for clients (a.k.a. OTP) see [this document](/docs/otp.md).
-
-## OpenVPN Details
-
-We use `tun` mode, because it works on the widest range of devices.
-`tap` mode, for instance, does not work on Android, except if the device
-is rooted.
-
-The topology used is `net30`, because it works on the widest range of OS.
-`p2p`, for instance, does not work on Windows.
-
-The UDP server uses`192.168.255.0/24` for dynamic clients by default.
-
-The client profile specifies `redirect-gateway def1`, meaning that after
-establishing the VPN connection, all traffic will go through the VPN.
-This might cause problems if you use local DNS recursors which are not
-directly reachable, since you will try to reach them through the VPN
-and they might not answer to you. If that happens, use public DNS
-resolvers like those of Google (8.8.4.4 and 8.8.8.8) or OpenDNS
-(208.67.222.222 and 208.67.220.220).
-
-
-## Security Discussion
-
-The Docker container runs its own EasyRSA PKI Certificate Authority.  This was
-chosen as a good way to compromise on security and convenience.  The container
-runs under the assumption that the OpenVPN container is running on a secure
-host, that is to say that an adversary does not have access to the PKI files
-under `/etc/openvpn/pki`.  This is a fairly reasonable compromise because if an
-adversary had access to these files, the adversary could manipulate the
-function of the OpenVPN server itself (sniff packets, create a new PKI CA, MITM
-packets, etc).
-
-* The certificate authority key is kept in the container by default for
-  simplicity.  It's highly recommended to secure the CA key with some
-  passphrase to protect against a filesystem compromise.  A more secure system
-  would put the EasyRSA PKI CA on an offline system (can use the same Docker
-  image and the script [`ovpn_copy_server_files`](/docs/paranoid.md) to accomplish this).
-* It would be impossible for an adversary to sign bad or forged certificates
-  without first cracking the key's passphase should the adversary have root
-  access to the filesystem.
-* The EasyRSA `build-client-full` command will generate and leave keys on the
-  server, again possible to compromise and steal the keys.  The keys generated
-  need to be signed by the CA which the user hopefully configured with a passphrase
-  as described above.
-* Assuming the rest of the Docker container's filesystem is secure, TLS + PKI
-  security should prevent any malicious host from using the VPN.
-
-
-## Benefits of Running Inside a Docker Container
-
-### The Entire Daemon and Dependencies are in the Docker Image
-
-This means that it will function correctly (after Docker itself is setup) on
-all distributions Linux distributions such as: Ubuntu, Arch, Debian, Fedora,
-etc.  Furthermore, an old stable server can run a bleeding edge OpenVPN server
-without having to install/muck with library dependencies (i.e. run latest
-OpenVPN with latest OpenSSL on Ubuntu 12.04 LTS).
-
-### It Doesn't Stomp All Over the Server's Filesystem
-
-Everything for the Docker container is contained in the runtime image
-(`xlokius/openvpn`) and the `$OVPN_DATA` data volume. To remove
-it, remove the corresponding containers, `$OVPN_DATA` data volume and Docker
-image and it's completely removed.  This also makes it easier to run multiple
-servers since each lives in the bubble of the container (of course multiple IPs
-or separate ports are needed to communicate with the world).
-
-### Some (arguable) Security Benefits
-
-At the simplest level compromising the container may prevent additional
-compromise of the server.  There are many arguments surrounding this, but the
-take away is that it certainly makes it more difficult to break out of the
-container.  People are actively working on Linux containers to make this more
-of a guarantee in the future.
-
-## Differences from jpetazzo/dockvpn
-
-* No longer uses serveconfig to distribute the configuration via https
-* Proper PKI support integrated into image
-* OpenVPN config files, PKI keys and certs are stored on a storage
-  volume for re-use across containers
-* Addition of tls-auth for HMAC security
-
-## Originally Tested On
-
-* Docker hosts:
-  * server a [Digital Ocean](https://www.digitalocean.com/?refcode=d19f7fe88c94) Droplet with 512 MB RAM running Ubuntu 14.04
-* Clients
-  * Android App OpenVPN Connect 1.1.14 (built 56)
-     * OpenVPN core 3.0 android armv7a thumb2 32-bit
-  * OS X Mavericks with Tunnelblick 3.4beta26 (build 3828) using openvpn-2.3.4
-  * ArchLinux OpenVPN pkg 2.3.4-1
-
-
-## License
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fkylemanna%2Fdocker-openvpn.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fkylemanna%2Fdocker-openvpn?ref=badge_large)
+Consulta [`LICENSE`](LICENSE).
